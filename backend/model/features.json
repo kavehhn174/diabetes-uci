@@ -1,0 +1,179 @@
+{
+    "top_n_features": 8,
+    "selected_features": [
+        "number_inpatient",
+        "discharge_disposition",
+        "number_emergency",
+        "number_diagnoses",
+        "medical_specialty",
+        "admission_source",
+        "number_outpatient",
+        "num_lab_procedures"
+    ],
+    "mutual_information_scores": [
+        {
+            "feature": "number_inpatient",
+            "mutual_information": 0.030833398295092795
+        },
+        {
+            "feature": "discharge_disposition",
+            "mutual_information": 0.020088261904351385
+        },
+        {
+            "feature": "number_emergency",
+            "mutual_information": 0.010871989528943304
+        },
+        {
+            "feature": "number_diagnoses",
+            "mutual_information": 0.007152984216425554
+        },
+        {
+            "feature": "medical_specialty",
+            "mutual_information": 0.006952588442316154
+        },
+        {
+            "feature": "admission_source",
+            "mutual_information": 0.005924424201636782
+        },
+        {
+            "feature": "number_outpatient",
+            "mutual_information": 0.005924214273097084
+        },
+        {
+            "feature": "num_lab_procedures",
+            "mutual_information": 0.004110377250979402
+        },
+        {
+            "feature": "num_medications",
+            "mutual_information": 0.0036037305096123795
+        },
+        {
+            "feature": "time_in_hospital",
+            "mutual_information": 0.002734298038435043
+        },
+        {
+            "feature": "insulin",
+            "mutual_information": 0.002524472519466331
+        },
+        {
+            "feature": "admission_type",
+            "mutual_information": 0.0020823084640643266
+        },
+        {
+            "feature": "diabetesMed",
+            "mutual_information": 0.001910904780806355
+        },
+        {
+            "feature": "age",
+            "mutual_information": 0.0016019331927073438
+        },
+        {
+            "feature": "race",
+            "mutual_information": 0.0014241826637639557
+        },
+        {
+            "feature": "num_procedures",
+            "mutual_information": 0.0013960554929732492
+        },
+        {
+            "feature": "change",
+            "mutual_information": 0.0010603897978896382
+        },
+        {
+            "feature": "metformin",
+            "mutual_information": 0.0005243772427623999
+        },
+        {
+            "feature": "A1Cresult",
+            "mutual_information": 0.000349166749630498
+        },
+        {
+            "feature": "repaglinide",
+            "mutual_information": 0.0002854157177359744
+        },
+        {
+            "feature": "glipizide",
+            "mutual_information": 0.00026206095057250064
+        },
+        {
+            "feature": "max_glu_serum",
+            "mutual_information": 0.00025289827122580884
+        },
+        {
+            "feature": "rosiglitazone",
+            "mutual_information": 0.00021175721226067055
+        },
+        {
+            "feature": "gender",
+            "mutual_information": 0.0001897256746242117
+        },
+        {
+            "feature": "acarbose",
+            "mutual_information": 0.0001648893973711381
+        },
+        {
+            "feature": "pioglitazone",
+            "mutual_information": 0.00014536784942620752
+        },
+        {
+            "feature": "glimepiride",
+            "mutual_information": 8.215784600287736e-05
+        },
+        {
+            "feature": "miglitol",
+            "mutual_information": 6.236348216632028e-05
+        },
+        {
+            "feature": "has_insurance",
+            "mutual_information": 6.131960951038379e-05
+        },
+        {
+            "feature": "glyburide-metformin",
+            "mutual_information": 5.627608868419576e-05
+        },
+        {
+            "feature": "glyburide",
+            "mutual_information": 4.917144990779698e-05
+        },
+        {
+            "feature": "chlorpropamide",
+            "mutual_information": 4.7908713200848195e-05
+        },
+        {
+            "feature": "tolazamide",
+            "mutual_information": 2.667060617001082e-05
+        },
+        {
+            "feature": "nateglinide",
+            "mutual_information": 1.8362023415107104e-05
+        },
+        {
+            "feature": "metformin-rosiglitazone",
+            "mutual_information": 1.2142111608941253e-05
+        },
+        {
+            "feature": "glimepiride-pioglitazone",
+            "mutual_information": 1.0336317771041228e-05
+        },
+        {
+            "feature": "acetohexamide",
+            "mutual_information": 1.0336317771041228e-05
+        },
+        {
+            "feature": "glipizide-metformin",
+            "mutual_information": 9.525979036205013e-06
+        },
+        {
+            "feature": "tolbutamide",
+            "mutual_information": 9.327275378936031e-06
+        },
+        {
+            "feature": "troglitazone",
+            "mutual_information": 7.97958495543168e-06
+        },
+        {
+            "feature": "metformin-pioglitazone",
+            "mutual_information": 6.071014530361509e-06
+        }
+    ]
+}
