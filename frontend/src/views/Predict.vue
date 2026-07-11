@@ -19,32 +19,32 @@
       </div>
     </div>
 
-    <div class="card grid gap-6 lg:grid-cols-2">
+    <div class="card grid items-start gap-6 lg:grid-cols-2">
       <div class="space-y-4">
         <h2 class="text-lg font-bold">Patient features</h2>
 
         <div class="grid gap-4 sm:grid-cols-2">
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Age group</label>
             <Select v-model="form.age_group" :options="ageGroupOptions" class="w-full" />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Admission type</label>
             <Select v-model="form.admission_type" :options="admissionTypeOptions" class="w-full" />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Admission source</label>
             <Select v-model="form.admission_source" :options="admissionSourceOptions" class="w-full" />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Discharge disposition</label>
             <Select v-model="form.discharge_disposition" :options="dischargeDispositionOptions" class="w-full" />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Primary diagnosis category</label>
             <Select v-model="form.diag_1_group" :options="diagGroupOptions" class="w-full" />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Medical specialty</label>
             <InputText v-model="form.medical_specialty" placeholder="e.g. Cardiology (blank = Missing)" class="w-full" />
           </div>
@@ -52,29 +52,29 @@
 
         <h3 class="pt-2 text-sm font-bold text-surface-500 dark:text-surface-400">Utilization counts</h3>
         <div class="grid gap-4 sm:grid-cols-3">
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Prior inpatient visits</label>
-            <InputNumber v-model="form.number_inpatient" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.number_inpatient" :min="0" showButtons fluid />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Prior outpatient visits</label>
-            <InputNumber v-model="form.number_outpatient" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.number_outpatient" :min="0" showButtons fluid />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Prior emergency visits</label>
-            <InputNumber v-model="form.number_emergency" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.number_emergency" :min="0" showButtons fluid />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Number of diagnoses</label>
-            <InputNumber v-model="form.number_diagnoses" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.number_diagnoses" :min="0" showButtons fluid />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Time in hospital (days)</label>
-            <InputNumber v-model="form.time_in_hospital" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.time_in_hospital" :min="0" showButtons fluid />
           </div>
-          <div class="flex flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-sm font-medium">Number of medications</label>
-            <InputNumber v-model="form.num_medications" :min="0" showButtons class="w-full" />
+            <InputNumber v-model="form.num_medications" :min="0" showButtons fluid />
           </div>
         </div>
 
@@ -89,7 +89,7 @@
 
       <div>
         <h2 class="mb-2 text-lg font-bold">Prediction</h2>
-        <div v-if="!result" class="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-surface-300 text-sm text-surface-400 dark:border-surface-600">
+        <div v-if="!result" class="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-surface-300 text-sm text-surface-400 dark:border-surface-600">
           Run a prediction to see the model's output here.
         </div>
         <div v-else class="space-y-4 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-950/40">

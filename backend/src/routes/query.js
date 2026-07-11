@@ -11,7 +11,7 @@ const AGE_ORDER = [
 const RACE_VALUES = ['Caucasian', 'AfricanAmerican', 'Hispanic', 'Asian', 'Other', 'Unknown'];
 const GENDER_VALUES = ['Male', 'Female', 'Unknown/Invalid'];
 const NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1';
-const NIM_MODEL = 'openai/gpt-oss-120b';
+const NIM_MODEL = 'mistralai/ministral-14b-instruct-2512';
 // Optional: set NIM_API_KEY in the environment (see .env.example) to enable
 // LLM-backed prompt parsing. Without it, the rule-based fallback parser
 // below (parseNaturalLanguage) is used automatically.
@@ -313,6 +313,15 @@ function normalizeLLMQuery(result, prompt) {
     filters.readmitted = filters.readmitted.map((v) => mapReadmitted[String(v).toLowerCase()] || v);
   }
 
+  // Numeric comparison filters must be scalar operator strings (e.g. ">=3"),
+  // but the LLM sometimes wraps them in a single-element array - unwrap those.
+  for (const key of ['number_inpatient', 'number_emergency', 'number_diagnoses', 'time_in_hospital']) {
+    if (Array.isArray(filters[key])) {
+      filters[key] = filters[key].length ? String(filters[key][0]) : undefined;
+      if (filters[key] === undefined) delete filters[key];
+    }
+  }
+
   const sortBy = ALLOWED_SORT_BY.has(result.sortBy) ? result.sortBy : fallback.sortBy;
   const order = result.order === 'asc' ? 'asc' : 'desc';
   const explanation = typeof result.explanation === 'string' && result.explanation.trim()
@@ -322,9 +331,50 @@ function normalizeLLMQuery(result, prompt) {
   return { filters, sortBy, order, explanation };
 }
 
+// Reads an OpenAI-style Server-Sent-Events chat completion stream and
+// accumulates the token deltas into the final text. `onChunk` is invoked on
+// every chunk received (even empty keep-alives) so the caller can reset an
+// idle timeout - i.e. we only give up if the model actually stalls, not
+// based on the total time the full response takes to stream in.
+async function readSSEStream(body, onChunk) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let reasoningContent = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onChunk?.();
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (!data || data === '[DONE]') continue;
+      try {
+        const json = JSON.parse(data);
+        const delta = json?.choices?.[0]?.delta || {};
+        if (delta.content) content += delta.content;
+        if (delta.reasoning_content) reasoningContent += delta.reasoning_content;
+      } catch (_err) {
+        // Ignore partial/malformed SSE lines; they get completed by the
+        // next chunk or are harmless keep-alives.
+      }
+    }
+  }
+
+  return content || reasoningContent;
+}
+
 async function callLLM(prompt) {
   if (!NIM_API_KEY) {
-    return parseNaturalLanguage(prompt);
+    return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: null };
   }
 
   const systemPrompt = [
@@ -356,46 +406,74 @@ async function callLLM(prompt) {
     'Numeric constraints must be string ops like >=2, <5, =3.',
   ].join('\n');
 
+  // We stream the response instead of waiting for the full completion so we
+  // can use an *idle* timeout (no data received for N ms) rather than one
+  // hard cutoff on total request time. That way a model that's slow but
+  // steadily streaming tokens isn't killed early, while a genuinely stuck
+  // request still gets cut off quickly. HARD_TIMEOUT_MS is a backstop in
+  // case the connection opens but the server never streams anything at all.
+  const IDLE_TIMEOUT_MS = 12000;
+  const HARD_TIMEOUT_MS = 30000;
+  const controller = new AbortController();
+  let idleTimer;
+  let timedOutReason = null;
+  const armIdleTimer = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      timedOutReason = `no data received from NIM for ${IDLE_TIMEOUT_MS}ms (stream stalled)`;
+      controller.abort();
+    }, IDLE_TIMEOUT_MS);
+  };
+  const hardTimer = setTimeout(() => {
+    timedOutReason = `NIM request exceeded hard timeout of ${HARD_TIMEOUT_MS}ms`;
+    controller.abort();
+  }, HARD_TIMEOUT_MS);
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    let response;
-    try {
-      response = await fetch(`${NIM_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${NIM_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: NIM_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.2,
-          top_p: 1,
-          max_tokens: 800,
-          stream: false,
-        }),
-      });
-    } finally {
-      clearTimeout(timeout);
+    armIdleTimer();
+    const response = await fetch(`${NIM_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${NIM_API_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: NIM_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        top_p: 1,
+        max_tokens: 800,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok || !response.body) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`NIM API error ${response.status} ${response.statusText}: ${errText.slice(0, 500)}`);
     }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`NIM API error ${response.status}: ${errText}`);
-    }
+    const content = await readSSEStream(response.body, armIdleTimer);
+    clearTimeout(idleTimer);
+    clearTimeout(hardTimer);
 
-    const completion = await response.json();
-    const content = completion?.choices?.[0]?.message?.content || '';
     const parsed = extractJsonObject(content);
-    return normalizeLLMQuery(parsed, prompt);
+    if (!parsed) {
+      const snippet = content ? content.slice(0, 300) : '(empty response)';
+      throw new Error(`NIM response was not valid/parseable JSON: ${snippet}`);
+    }
+    return { ...normalizeLLMQuery(parsed, prompt), llmUsed: true, llmError: null };
   } catch (err) {
-    console.error('NIM LLM call failed, using fallback parser:', err.message);
-    return parseNaturalLanguage(prompt);
+    clearTimeout(idleTimer);
+    clearTimeout(hardTimer);
+    const isAbort = err.name === 'AbortError';
+    const message = isAbort ? (timedOutReason || 'NIM request was aborted') : err.message;
+    console.error(`NIM LLM call failed (model=${NIM_MODEL}), using fallback parser:`, message);
+    return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: message };
   }
 }
 

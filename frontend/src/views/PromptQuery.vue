@@ -30,10 +30,26 @@
         </button>
       </div>
 
+      <div
+        v-if="llmError"
+        class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+      >
+        <p class="text-sm">
+          <i class="pi pi-exclamation-triangle mr-1"></i>
+          <strong>LLM call failed, using rule-based fallback:</strong> {{ llmError }}
+        </p>
+      </div>
+
       <div v-if="explanation" class="rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
         <p class="text-sm">
           <i class="pi pi-sparkles mr-1 text-primary-500"></i>
-          <strong>Interpreted query:</strong> {{ explanation }}
+          <strong>Interpreted query</strong>
+          <Tag
+            :value="llmUsed ? 'LLM' : 'Rule-based fallback'"
+            :severity="llmUsed ? 'info' : 'secondary'"
+            class="ml-1"
+          />
+          : {{ explanation }}
         </p>
         <pre class="mt-2 overflow-auto rounded bg-surface-100 p-2 text-xs dark:bg-surface-900">{{ JSON.stringify(query, null, 2) }}</pre>
       </div>
@@ -153,6 +169,8 @@ const pages = ref(0)
 const explanation = ref('')
 const query = ref({})
 const promptPrediction = ref(null)
+const llmError = ref('')
+const llmUsed = ref(false)
 
 const examples = [
   'high risk patients over 70',
@@ -173,8 +191,12 @@ async function execute(resetPage = true) {
     explanation.value = data.query.explanation
     query.value = data.query
     promptPrediction.value = data.promptPrediction
+    llmError.value = data.query.llmError || ''
+    llmUsed.value = !!data.query.llmUsed
   } catch (err) {
     console.error(err)
+    llmError.value = err?.response?.data?.error || err.message || 'Request failed'
+    llmUsed.value = false
   } finally {
     loading.value = false
   }
