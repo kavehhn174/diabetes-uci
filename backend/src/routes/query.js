@@ -11,11 +11,37 @@ const AGE_ORDER = [
 const RACE_VALUES = ['Caucasian', 'AfricanAmerican', 'Hispanic', 'Asian', 'Other', 'Unknown'];
 const GENDER_VALUES = ['Male', 'Female', 'Unknown/Invalid'];
 const NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1';
-const NIM_MODEL = 'mistralai/ministral-14b-instruct-2512';
+// Tried in order - if a model errors out or times out we immediately retry
+// with the next one. Override via the NIM_MODELS env var (comma-separated)
+// to change the list/order without a code change.
+const DEFAULT_NIM_MODELS = [
+  'mistralai/ministral-14b-instruct-2512',
+  'openai/gpt-oss-120b',
+  'nvidia/nemotron-3-ultra-550b-a55b',
+];
+const NIM_MODELS = (process.env.NIM_MODELS || DEFAULT_NIM_MODELS.join(','))
+  .split(',')
+  .map((m) => m.trim())
+  .filter(Boolean);
 // Optional: set NIM_API_KEY in the environment (see .env.example) to enable
 // LLM-backed prompt parsing. Without it, the rule-based fallback parser
 // below (parseNaturalLanguage) is used automatically.
 const NIM_API_KEY = process.env.NIM_API_KEY || '';
+
+// gpt-oss and Nemotron-Ultra are reasoning models that, left on their
+// defaults, spend most of their token/time budget "thinking" before ever
+// emitting the actual JSON answer - which blows well past our per-model
+// timeout. Dial reasoning down for this simple extraction task so they
+// respond quickly instead of timing out and wasting the fallback slot.
+function reasoningControlsFor(model) {
+  if (model.startsWith('openai/gpt-oss')) {
+    return { reasoning_effort: 'low' };
+  }
+  if (model.startsWith('nvidia/nemotron-3-ultra')) {
+    return { chat_template_kwargs: { enable_thinking: false } };
+  }
+  return {};
+}
 
 const ALLOWED_FILTER_KEYS = new Set([
   'age',
@@ -372,11 +398,14 @@ async function readSSEStream(body, onChunk) {
   return content || reasoningContent;
 }
 
-async function callLLM(prompt) {
-  if (!NIM_API_KEY) {
-    return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: null };
-  }
+// Per-model budget. Each model gets at most this long to respond before we
+// give up on it and move on to the next one in NIM_MODELS - keeps the whole
+// chain well under the old 12s single-model timeout even when a model is
+// unreachable, so the UI never stalls for long before falling back.
+const IDLE_TIMEOUT_MS = 3000;
+const HARD_TIMEOUT_MS = 8000;
 
+async function callModel(model, prompt) {
   const systemPrompt = [
     'You convert medical search prompts into JSON for SQL filtering.',
     'Return ONLY valid JSON (no markdown).',
@@ -411,9 +440,8 @@ async function callLLM(prompt) {
   // hard cutoff on total request time. That way a model that's slow but
   // steadily streaming tokens isn't killed early, while a genuinely stuck
   // request still gets cut off quickly. HARD_TIMEOUT_MS is a backstop in
-  // case the connection opens but the server never streams anything at all.
-  const IDLE_TIMEOUT_MS = 12000;
-  const HARD_TIMEOUT_MS = 30000;
+  // case the connection opens but the server never streams anything at all,
+  // and it also caps how long we wait before trying the next model.
   const controller = new AbortController();
   let idleTimer;
   let timedOutReason = null;
@@ -440,7 +468,7 @@ async function callLLM(prompt) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: NIM_MODEL,
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
@@ -449,6 +477,7 @@ async function callLLM(prompt) {
         top_p: 1,
         max_tokens: 800,
         stream: true,
+        ...reasoningControlsFor(model),
       }),
     });
 
@@ -466,15 +495,37 @@ async function callLLM(prompt) {
       const snippet = content ? content.slice(0, 300) : '(empty response)';
       throw new Error(`NIM response was not valid/parseable JSON: ${snippet}`);
     }
-    return { ...normalizeLLMQuery(parsed, prompt), llmUsed: true, llmError: null };
+    return { ...normalizeLLMQuery(parsed, prompt), llmUsed: true, llmModel: model, llmError: null };
   } catch (err) {
     clearTimeout(idleTimer);
     clearTimeout(hardTimer);
     const isAbort = err.name === 'AbortError';
     const message = isAbort ? (timedOutReason || 'NIM request was aborted') : err.message;
-    console.error(`NIM LLM call failed (model=${NIM_MODEL}), using fallback parser:`, message);
-    return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: message };
+    throw new Error(`model=${model}: ${message}`);
   }
+}
+
+// Tries each configured model in order, moving on to the next as soon as one
+// errors or blows its ~8s budget (IDLE_TIMEOUT_MS/HARD_TIMEOUT_MS above). If
+// every model fails, falls back to the deterministic rule-based parser so
+// the feature still works without ever hanging the request.
+async function callLLM(prompt) {
+  if (!NIM_API_KEY) {
+    return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: null };
+  }
+
+  const errors = [];
+  for (const model of NIM_MODELS) {
+    try {
+      return await callModel(model, prompt);
+    } catch (err) {
+      console.error(`NIM LLM call failed, trying next model if available:`, err.message);
+      errors.push(err.message);
+    }
+  }
+
+  console.error('All NIM models failed, using rule-based fallback parser:', errors.join(' | '));
+  return { ...parseNaturalLanguage(prompt), llmUsed: false, llmError: errors.join(' | ') };
 }
 
 router.post('/nlp', async (req, res) => {
