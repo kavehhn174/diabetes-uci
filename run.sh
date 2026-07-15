@@ -44,6 +44,41 @@ err()   { echo "$(color '1;31' '[run.sh]') $1" >&2; }
 mkdir -p "$LOG_DIR"
 
 # --- sanity checks ------------------------------------------------------------
+# Pin to the Node version in .nvmrc so the Node that runs the backend always
+# matches the Node that native addons (better-sqlite3) were built against,
+# regardless of what shell/PATH invoked this script (Cursor's bundled Node,
+# a stale nvm "default", etc).
+use_pinned_node() {
+  local nvmrc="$ROOT_DIR/.nvmrc"
+  [[ -f "$nvmrc" ]] || return 0
+  local wanted
+  wanted="$(tr -d '[:space:]' < "$nvmrc")"
+  [[ -n "$wanted" ]] || return 0
+
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    # shellcheck disable=SC1091
+    \. "$NVM_DIR/nvm.sh" --no-use
+    if nvm ls "$wanted" >/dev/null 2>&1; then
+      nvm use --silent "$wanted" >/dev/null
+    else
+      info "Node $wanted (pinned in .nvmrc) not installed via nvm; installing..."
+      nvm install "$wanted" >/dev/null
+    fi
+    hash -r 2>/dev/null || true
+  fi
+
+  local major
+  major="$(node -e 'console.log(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if [[ "$major" != "$wanted" ]]; then
+    warn "Expected Node $wanted (pinned in .nvmrc) but found Node ${major:-unknown} on PATH ($(command -v node))."
+    warn "Install nvm and Node $wanted, or run: nvm use $wanted"
+  else
+    info "Using Node $(node -v) ($(command -v node))."
+  fi
+}
+use_pinned_node
+
 command -v node >/dev/null 2>&1 || { err "node is not installed / not on PATH."; exit 1; }
 command -v npm  >/dev/null 2>&1 || { err "npm is not installed / not on PATH."; exit 1; }
 
@@ -95,6 +130,21 @@ if [[ "$SKIP_INSTALL" == false ]]; then
       warn "python3 not found - the prediction microservice will fail to start."
       warn "Install Python 3 and re-run, or run with --no-install and set it up manually."
     fi
+  fi
+fi
+
+# Always verify better-sqlite3 against the Node that will run the backend
+# (ABI breaks after Node upgrades even when node_modules already exists).
+if [[ -d "$BACKEND_DIR/node_modules/better-sqlite3" ]]; then
+  if ! (cd "$BACKEND_DIR" && node -e "require('better-sqlite3')" >/dev/null 2>&1); then
+    info "Rebuilding better-sqlite3 native bindings for Node $(node -v)..."
+    (cd "$BACKEND_DIR" && npm rebuild better-sqlite3)
+    if ! (cd "$BACKEND_DIR" && node -e "require('better-sqlite3')" >/dev/null 2>&1); then
+      err "better-sqlite3 still fails to load after rebuild."
+      err "Try: (cd backend && rm -rf node_modules && npm install)"
+      exit 1
+    fi
+    ok "better-sqlite3 bindings rebuilt."
   fi
 fi
 
